@@ -17,9 +17,29 @@ $blog->slug  = 'custom-routing-to-a-page-including-a-form-example';
  //// OR
  //// You can also use `db_fetchResult()` with SQL which returns the std object
 
- $sql = 'SELECT * FROM '.db_prefix().'post WHERE id = :id'
+ $sql = 'SELECT *, postTitle title FROM ' . db_prefix() . 'post WHERE postId = :id';
  $blog = db_fetchResult($sql, array(':id' => $id));
 */
+
+//// Retrieving the result count
+//$sql = 'SELECT COUNT(*) FROM ' . db_table('post');
+//$count = db_count($sql);
+//echo $count . '<br>';
+//
+//$count = db_count('post');
+//echo $count . '<br>';
+//
+//// Retrieving a field
+//$sql = 'SELECT MAX(postId) FROM ' . db_table('post');
+//$max = db_fetch($sql);
+//echo $max . '<br>';
+//
+//$sql = 'SELECT * FROM ' . db_table('post');
+//$result = db_query($sql);
+//
+//echo db_numRows($result);
+//
+//exit;
 
 if ($blog) {
     if ($slug && strcasecmp($slug, $blog->slug) !== 0) {

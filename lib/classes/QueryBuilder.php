@@ -56,16 +56,29 @@ class QueryBuilder
         'like', 'like%%', 'like%~', 'like~%',
         'nlike', 'nlike%%', 'nlike%~', 'nlike~%'
     );
+    private static $eqs = array(
+        'eq'    => '=',
+        'neq'   => '!=',
+        'lt'    => '<',
+        'lte'   => '<=',
+        'gt'    => '>',
+        'gte'   => '>=',
+    );
     /** @var array Collection of LIKE expressions */
     private static $likes = array(
-        'like' => 'LIKE "%:likeValue%"',
-        'like%%' => 'LIKE "%:likeValue%"',
-        'like%~' => 'LIKE "%:likeValue"',
-        'like~%' => 'LIKE ":likeValue%"',
-        'nlike' => 'NOT LIKE "%:likeValue%"',
-        'nlike%%' => 'NOT LIKE "%:likeValue%"',
-        'nlike%~' => 'NOT LIKE "%:likeValue"',
-        'nlike~%' => 'NOT LIKE ":likeValue%"',
+        'like'      => 'LIKE CONCAT("%", :placeholder, "%")',
+        'like%%'    => 'LIKE CONCAT("%", :placeholder, "%")',
+        'like%~'    => 'LIKE CONCAT("%", :placeholder)',
+        'like~%'    => 'LIKE CONCAT(:placeholder, "%")',
+        'nlike'     => 'NOT LIKE CONCAT("%", :placeholder, "%")',
+        'nlike%%'   => 'NOT LIKE CONCAT("%", :placeholder, "%")',
+        'nlike%~'   => 'NOT LIKE CONCAT("%", :placeholder)',
+        'nlike~%'   => 'NOT LIKE CONCAT(:placeholder, "%")',
+    );
+    /** @var array Collection of BETWEEN operator mapping */
+    private static $betweens = array(
+        'between' => 'BETWEEN',
+        'nbetween' => 'NOT BETWEEN',
     );
     /** @var array Collection of join types allowed */
     private static $joinTypes = array('INNER', 'LEFT', 'RIGHT', 'OUTER');
@@ -899,7 +912,7 @@ class QueryBuilder
      *
      * @param string $type The condition type "AND" or "OR"; Default is "AND"
      *
-     * @return string The built condition WHERE clause
+     * @return string|mixed The built condition WHERE clause
      */
     public static function buildCondition($cond = array(), $type = 'AND')
     {
@@ -913,9 +926,18 @@ class QueryBuilder
 
         $type = strtoupper($type);
         $condition = array();
+        $values = array();
 
         foreach ($cond as $field => $value) {
             $field = trim($field);
+
+            if (in_array(strtoupper($field), array('AND', 'OR'))) {
+                list($nestedClause, $nestedValues) = self::buildCondition($value, $field);
+                $condition[] = '(' . $nestedClause . ')';
+                $values = array_merge($values, $nestedValues);
+                continue;
+            }
+
             $fieldOpr = explode(' ', $field);
             $field = trim($fieldOpr[0]);
 
@@ -923,7 +945,7 @@ class QueryBuilder
                 $field = substr($field, 0, strpos($field, '__QueryBuilder::condition__'));
             }
 
-            $opr = (count($fieldOpr) === 2) ? trim($fieldOpr[1]) : '=';
+            $opr = count($fieldOpr) === 2 ? trim($fieldOpr[1]) : '=';
 
             # check if any operator is given in the field
             if (!in_array($opr, self::$operators)) {
@@ -940,46 +962,89 @@ class QueryBuilder
                 if (in_array($opr, array('between', 'nbetween')) && !is_array($value)) {
                     $opr = '=';
                 }
+
                 $opr = strtolower($opr);
+                $key = $field;
+                $placeholder = self::getPlaceholder($key, $values);
                 $field = self::quote($field);
 
                 if (array_key_exists($opr, self::$likes)) {
-                    $value = str_replace(':likeValue', db_escapeString($value), self::$likes[$opr]);
-                    $condition[] = $field . ' ' . $value;
-                } elseif (is_numeric($value)) {
-                    $condition[] = $field . ' ' . $opr . ' ' . db_escapeString($value) . '';
-                } elseif (is_string($value)) {
-                    $condition[] = $field . ' ' . $opr . ' "' . db_escapeString($value) . '"';
-                } elseif (is_null($value)) {
+                    $condition[] = $field . ' ' . str_replace(':placeholder', $placeholder, self::$likes[$opr]);
+                    $values[$placeholder] = $value;
+                    continue;
+                }
+
+                if (is_null($value)) {
                     if (in_array($opr, array('!=', '<>'))) {
                         $condition[] = $field . ' IS NOT NULL';
                     } else {
                         $condition[] = $field . ' IS NULL';
                     }
-                } elseif (is_array($value) && count($value)) {
-                    $list = array();
-                    foreach ($value as $v) {
-                        $list[] = (is_numeric($v)) ? db_escapeString($v) : '"' . db_escapeString($v) . '"';
-                    }
-                    if ($opr === 'between') {
-                        $condition[] = '( ' . $field . ' BETWEEN ' . current($list) . ' AND ' . end($list) . ' )';
-                    } elseif ($opr === 'nbetween') {
-                        $condition[] = '( ' . $field . ' NOT BETWEEN ' . current($list) . ' AND ' . end($list) . ' )';
-                    } elseif ($opr === '!=') {
-                        $condition[] = $field . ' NOT IN (' . implode(', ', $list) . ')';
-                    } else {
-                        $condition[] = $field . ' IN (' . implode(', ', $list) . ')';
-                    }
-                } else {
-                    $condition[] = $field . ' ' . $opr . ' ' . db_escapeString($value);
+                    continue;
                 }
+
+                if (is_array($value) && count($value)) {
+                    if ($opr === 'between' || $opr === 'nbetween') {
+                        $condition[] = sprintf(
+                            '(%s %s :%s_from AND :%s_to)',
+                            $field,
+                            self::$betweens[$opr],
+                            $key,
+                            $key
+                        );
+
+                        $values[$placeholder . '_from'] = current($value);
+                        $values[$placeholder . '_to'] = end($value);
+                    } else {
+                        $inPlaceholders = array();
+                        foreach ($value as $i => $val) {
+                            $placeholder = ':' . $key . $i;
+                            $inPlaceholders[] = $placeholder;
+                            $values[$placeholder] = $val;
+                        }
+
+                        $condition[] = sprintf(
+                            '%s%sIN (%s)',
+                            $field,
+                            $opr === '!=' ? ' NOT ' : ' ',
+                            implode(', ', $inPlaceholders)
+                        );
+                    }
+                    continue;
+                }
+
+                $condition[] = "{$field} {$opr} {$placeholder}";
+                $values[$placeholder] = $value;
             }
         }
+
         if (count($condition)) {
-            $condition = implode(" {$type} ", $condition);
-        } else {
-            $condition = '';
+            return array(
+                implode(" {$type} ", $condition),
+                $values,
+            );
         }
-        return $condition;
+
+        return array('', array());
+    }
+
+    private static function getPlaceholder($key, $values = array()) {
+        $placeholders = array_filter($values, function ($placeholder) use ($key) {
+            return stripos($placeholder, $key) === 1;
+        }, ARRAY_FILTER_USE_KEY);
+
+        if (!count($placeholders)) {
+            return ':' . $key;
+        }
+
+        $placeholders = array_keys($placeholders);
+        rsort($placeholders);
+
+        $index = '';
+        if (preg_match('/:' . $key . '(\d)*/', $placeholders[0], $matches)) {
+            $index = isset($matches[1]) ? $matches[1] + 1 : 0;
+        }
+
+        return ':' . $key . $index;
     }
 }
