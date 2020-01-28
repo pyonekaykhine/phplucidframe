@@ -67,11 +67,9 @@ class QueryBuilder
     /** @var array Collection of LIKE expressions */
     private static $likes = array(
         'like'      => 'LIKE CONCAT("%", :placeholder, "%")',
-        'like%%'    => 'LIKE CONCAT("%", :placeholder, "%")',
         'like%~'    => 'LIKE CONCAT("%", :placeholder)',
         'like~%'    => 'LIKE CONCAT(:placeholder, "%")',
         'nlike'     => 'NOT LIKE CONCAT("%", :placeholder, "%")',
-        'nlike%%'   => 'NOT LIKE CONCAT("%", :placeholder, "%")',
         'nlike%~'   => 'NOT LIKE CONCAT("%", :placeholder)',
         'nlike~%'   => 'NOT LIKE CONCAT(:placeholder, "%")',
     );
@@ -912,7 +910,9 @@ class QueryBuilder
      *
      * @param string $type The condition type "AND" or "OR"; Default is "AND"
      *
-     * @return string|mixed The built condition WHERE clause
+     * @return array The built condition WHERE AND/OR
+     *     [0] string The built condition WHERE AND/OR clause
+     *     [1] array The values to bind in the condition
      */
     public static function buildCondition($cond = array(), $type = 'AND')
     {
@@ -921,7 +921,7 @@ class QueryBuilder
         }
 
         if (empty($cond)) {
-            return '';
+            return array('', array());
         }
 
         $type = strtoupper($type);
