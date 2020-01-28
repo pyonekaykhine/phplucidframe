@@ -712,57 +712,56 @@ if (!function_exists('db_update')) {
                 }
             }
 
-            if (is_null($value)) {
-                $fields[$field] = null;
-                // $fields[] = QueryBuilder::quote($field) . ' = NULL';
-            } else {
-                $fields[$field] = $value;
-                // $fields[] = QueryBuilder::quote($field) . ' = "' . $value . '"';
-            }
+            $fields[$field] = $value ?: null;
 
             if ($i === $slugIndex && $useSlug === true) {
                 # $data[1] is slug
                 $slug = $value;
             }
+
             $i++;
         }
 
         # must have condition
         # this prevents unexpected update happened to all records
         if ($cond || $condition) {
+            $clause = '';
+            $values = array();
+
             if ($cond && is_array($cond)) {
-                $cond = db_condition($cond);
+                list($clause, $values) = db_condition($cond);
             } elseif ($condition && is_array($condition)) {
-                $cond = db_condition($condition);
+                list($clause, $values) = db_condition($condition);
             } elseif ($condition && is_string($condition)) {
-                $cond = $condition;
+                list($clause, $values) = $condition;
             }
 
-            if (empty($cond)) {
+            if (empty($clause)) {
                 return false;
             }
 
-            $notCond = 'NOT ( ' . $cond . ' )';
+            $notCond = 'NOT ( ' . $clause . ' )';
 
             if (db_tableHasSlug($table, $useSlug)) {
                 $slug = _slug($slug, $table, $notCond);
                 session_set('lastInsertSlug', $slug);
-                // $fields[] = '`slug` = "'.$slug.'"';
                 $fields['slug'] = $slug;
             }
 
             if (db_tableHasTimestamps($table)) {
-                // $fields[] = '`updated` = "' . date('Y-m-d H:i:s') . '"';
                 $fields['updated'] = date('Y-m-d H:i:s');
             }
 
             $sql = 'UPDATE ' . QueryBuilder::quote($table) . ' SET ';
             foreach ($fields as $key => $value) {
-                $sql .= sprintf(':%s = %s,', $key, $key);
+                $placeholder = ':' . $key;
+                $sql .= sprintf('`%s` = %s,', $key, $placeholder);
+                $values[$placeholder] = $value;
             }
-            $sql .= ' WHERE ' . $cond;
+            $sql = rtrim($sql, ',');
+            $sql .= ' WHERE ' . $clause;
 
-            return db_query($sql, $fields);
+            return db_query($sql, $values);
         }
 
         return false;

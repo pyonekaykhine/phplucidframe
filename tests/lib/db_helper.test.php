@@ -309,9 +309,11 @@ class DBHelperTestCase extends LucidFrameTestCase
             'postId' => 1,
             'postTitle' => 'Hello World Updated!'
         ));
-        $this->assertEqual(self::oneline($sql), self::oneline('UPDATE `post`
-            SET `postTitle` = "Hello World Updated!"
-            WHERE `postId` = 1'));
+        $this->assertEqual(self::oneline($sql), self::oneline('
+            UPDATE `post` 
+            SET `postTitle` = Hello World Updated!
+            WHERE `postId` = 1
+        '));
 
         # Using simple array condition
         $sql = db_update(
@@ -321,7 +323,7 @@ class DBHelperTestCase extends LucidFrameTestCase
         );
         $this->assertEqual(self::oneline($sql), self::oneline('
             UPDATE `post`
-            SET `postTitle` = "Hello World Updated!"
+            SET `postTitle` = Hello World Updated!
             WHERE `postId` = 1
         '));
 
@@ -333,19 +335,7 @@ class DBHelperTestCase extends LucidFrameTestCase
         );
         $this->assertEqual(self::oneline($sql), self::oneline('
             UPDATE `post`
-            SET `postTitle` = "Hello World Updated!"
-            WHERE `postId` = 1 AND `uid` = 1
-        '));
-
-        # Using string AND condition
-        $sql = db_update(
-            'post',
-            array('postTitle' => 'Hello World Updated!'),
-            db_and(array('postId' => 1, 'uid' => 1))
-        );
-        $this->assertEqual(self::oneline($sql), self::oneline('
-            UPDATE `post`
-            SET `postTitle` = "Hello World Updated!"
+            SET `postTitle` = Hello World Updated!
             WHERE `postId` = 1 AND `uid` = 1
         '));
 
@@ -353,13 +343,19 @@ class DBHelperTestCase extends LucidFrameTestCase
         $sql = db_update(
             'post',
             array('postTitle' => 'Hello World Updated!'),
-            db_or(array('postId' => 1, 'uid' => 1))
+            array(
+                'or' => array(
+                    'postId' => 1,
+                    'uid' => 1
+                )
+            )
         );
         $this->assertEqual(self::oneline($sql), self::oneline('
             UPDATE `post`
-            SET `postTitle` = "Hello World Updated!"
-            WHERE `postId` = 1 OR `uid` = 1
+            SET `postTitle` = Hello World Updated!
+            WHERE (`postId` = 1 OR `uid` = 1)
         '));
+        exit;
     }
 
     public function testDeleteQuery()
