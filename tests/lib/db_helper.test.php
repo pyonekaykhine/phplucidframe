@@ -253,62 +253,53 @@ class DBHelperTestCase extends LucidFrameTestCase
         $this->assertEqual($clause, '`id` = :id OR `id` > :id0');
         $this->assertEqual($this->toSql($clause, $values), '`id` = 10 OR `id` > 100');
 
-        // 19.
-        list($clause, $values) = db_or(
-            array('id' => 10),
-            array('id' => 100)
-        );
-        $this->assertEqual($clause, '`id` = :id OR `id` = :id0');
-        $this->assertEqual($this->toSql($clause, $values), '`id` = 10 OR `id` = 100');
-        exit;
-
-        // 20.
-        $cond = db_and(array(
+        // 19. LIKE %~%
+        list($clause, $values) = db_and(array(
             'title like' => 'a project'
         ));
-        $this->assertEqual($cond, '`title` LIKE "%a project%"');
 
-        // 21.
-        $cond = db_and(array(
-            'title like%%' => 'a project'
-        ));
-        $this->assertEqual($cond, '`title` LIKE "%a project%"');
+        $this->assertEqual($clause, '`title` LIKE CONCAT("%", :title, "%")');
+        $this->assertEqual($this->toSql($clause, $values), '`title` LIKE CONCAT("%", a project, "%")');
 
-        // 22.
-        $cond = db_and(array(
+        // 20. LIKE %~
+        list($clause, $values) = db_and(array(
             'title like%~' => 'a project'
         ));
-        $this->assertEqual($cond, '`title` LIKE "%a project"');
 
-        // 23.
-        $cond = db_and(array(
-            'title nlike~%' => 'a project'
+        $this->assertEqual($clause, '`title` LIKE CONCAT("%", :title)');
+        $this->assertEqual($this->toSql($clause, $values), '`title` LIKE CONCAT("%", a project)');
+
+        // 21. LIKE ~%
+        list($clause, $values) = db_and(array(
+            'title like~%' => 'a project'
         ));
-        $this->assertEqual($cond, '`title` NOT LIKE "a project%"');
 
-        // 24.
-        $cond = db_and(array(
+        $this->assertEqual($clause, '`title` LIKE CONCAT(:title, "%")');
+        $this->assertEqual($this->toSql($clause, $values), '`title` LIKE CONCAT(a project, "%")');
+
+        // 22. NOT LIKE %~%
+        list($clause, $values) = db_and(array(
             'title nlike' => 'a project'
         ));
-        $this->assertEqual($cond, '`title` NOT LIKE "%a project%"');
 
-        // 25.
-        $cond = db_and(array(
-            'title nlike%%' => 'a project'
-        ));
-        $this->assertEqual($cond, '`title` NOT LIKE "%a project%"');
+        $this->assertEqual($clause, '`title` NOT LIKE CONCAT("%", :title, "%")');
+        $this->assertEqual($this->toSql($clause, $values), '`title` NOT LIKE CONCAT("%", a project, "%")');
 
-        // 26.
-        $cond = db_and(array(
+        // 23. NOT LIKE %~
+        list($clause, $values) = db_and(array(
             'title nlike%~' => 'a project'
         ));
-        $this->assertEqual($cond, '`title` NOT LIKE "%a project"');
 
-        // 27.
-        $cond = db_and(array(
+        $this->assertEqual($clause, '`title` NOT LIKE CONCAT("%", :title)');
+        $this->assertEqual($this->toSql($clause, $values), '`title` NOT LIKE CONCAT("%", a project)');
+
+        // 24. NOT LIKE ~%
+        list($clause, $values) = db_and(array(
             'title nlike~%' => 'a project'
         ));
-        $this->assertEqual($cond, '`title` NOT LIKE "a project%"');
+
+        $this->assertEqual($clause, '`title` NOT LIKE CONCAT(:title, "%")');
+        $this->assertEqual($this->toSql($clause, $values), '`title` NOT LIKE CONCAT(a project, "%")');
     }
 
     public function testUpdateQuery()
