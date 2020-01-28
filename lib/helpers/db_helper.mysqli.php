@@ -911,7 +911,9 @@ if (!function_exists('db_delete_multi')) {
  *
  * @param string $type The condition type "AND" or "OR"; Default is "AND"
  *
- * @return string The built condition WHERE clause
+ * @return array The built condition WHERE AND/OR
+ *     [0] string The built condition WHERE AND/OR clause
+ *     [1] array The values to bind in the condition
  */
 function db_condition($cond = array(), $type = 'AND')
 {
@@ -919,10 +921,9 @@ function db_condition($cond = array(), $type = 'AND')
 }
 
 /**
- * Build the SQL WHERE clause AND condition from the various condition arrays
- * Alias of `db_conditionAND()`
+ * Build the SQL WHERE clause AND condition from array of conditions
  *
- * @param array $cond [$cond1,$cond2,$cond3,...] The condition array(s), for example
+ * @param array $condition The condition array, for example
  *
  *     array(
  *       'fieldName1'    => $value1,
@@ -937,30 +938,15 @@ function db_condition($cond = array(), $type = 'AND')
  *     [0] string The built condition WHERE AND clause
  *     [1] array The values to bind in the condition
  */
-function db_and($cond = array())
+function db_and($condition = array())
 {
-    $conditions = func_get_args();
-    $builtCond = array();
-    foreach ($conditions as $c) {
-        list($clause, $values) = db_condition($c, 'AND');
-        $builtCond[] = $clause;
-    }
-
-    echo 'db_and()';
-    _pr($builtCond);
-    _pr($values);
-
-    return array(
-        implode(' AND ', $builtCond),
-        $values
-    );
+    return db_condition($condition, 'AND');
 }
 
 /**
- * Build the SQL WHERE clause OR condition from the various condition arrays
- * Alias of `db_conditionOR()`
+ * Build the SQL WHERE clause OR condition from array of conditions
  *
- * @param array $cond [,$cond2,$cond3,...] The condition array(s), for example
+ * @param array $condition The condition array, for example
  *
  *     array(
  *       'fieldName1'    => $value1,
@@ -975,23 +961,9 @@ function db_and($cond = array())
  *     [0] string The built condition WHERE OR clause
  *     [1] array The values to bind in the condition
  */
-function db_or($cond = array())
+function db_or($condition = array())
 {
-    $conditions = func_get_args();
-    $builtCond = array();
-    foreach ($conditions as $c) {
-        list($clause, $values) = db_condition($c, 'OR');
-        $builtCond[] = $clause;
-    }
-
-    echo 'db_or()';
-    _pr($builtCond);
-    _pr($values);
-
-    return array(
-        implode(' OR ', $builtCond),
-        $values
-    );
+    return db_condition($condition, 'OR');
 }
 
 /**
