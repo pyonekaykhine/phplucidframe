@@ -587,6 +587,25 @@ if (!function_exists('_pr')) {
     }
 }
 
+if (!function_exists('_dpr')) {
+    /**
+     * Convenience method for `print_r` + `die`.
+     * Displays information about a variable in a way that's readable by humans.
+     * If given a string, integer or float, the value itself will be printed.
+     * If given an array, values will be presented in a format that shows keys and elements.
+     *
+     * @param mixed $input The variable to debug
+     * @param boolean $pre TRUE to print using `<pre>`, otherwise FALSE
+     *
+     * @return void
+     */
+    function _dpr($input, $pre = true)
+    {
+        _pr($input);
+        exit;
+    }
+}
+
 if (!function_exists('_dump')) {
     /**
      * Convenience method for `var_dump`.
