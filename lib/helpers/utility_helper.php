@@ -1585,7 +1585,7 @@ function _decrypt($encryptedText)
 {
     $secret = _cfg('securitySecret');
     if (!$secret || !function_exists('openssl_decrypt')) {
-        return $text;
+        return $encryptedText;
     }
 
     $method  = _cipher();
