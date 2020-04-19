@@ -492,7 +492,7 @@ function db_table($table)
  */
 function db_tableHasSlug($table, $useSlug = true)
 {
-    return _g('_DB')->hasSlug($table);
+    return _g('_DB')->hasSlug($table, $useSlug);
 }
 
 /**
@@ -524,6 +524,8 @@ if (!function_exists('db_insert')) {
      */
     function db_insert($table, $data = array(), $useSlug = true)
     {
+        QueryBuilder::clearBindValues();
+
         if (count($data) == 0) {
             return false;
         }
@@ -633,7 +635,7 @@ if (!function_exists('db_update')) {
      *
      * @param boolean $useSlug TRUE to include the slug field or FALSE to not exclude it
      *   The fourth argument can be provided here if you want to omit this.
-     * @param array|string $condition The condition for the UPDATE query. If you provide this,
+     * @param array $condition The condition for the UPDATE query. If you provide this,
      *   the first field of `$data` will not be built for condition
      *
      * ### Example
@@ -643,17 +645,12 @@ if (!function_exists('db_update')) {
      *       'fieldName2' => $value2
      *     )
      *
-     * OR
-     *
-     *     db_or(array(
-     *       'fieldName1' => $value1,
-     *       'fieldName2' => $value2
-     *     ))
-     *
      * @return boolean Returns TRUE on success or FALSE on failure
      */
-    function db_update($table, $data = array(), $useSlug = true, $condition = null)
+    function db_update($table, $data = array(), $useSlug = true, array $condition = array())
     {
+        QueryBuilder::clearBindValues();
+
         if (count($data) == 0) {
             return false;
         }
@@ -726,21 +723,26 @@ if (!function_exists('db_update')) {
         # this prevents unexpected update happened to all records
         if ($cond || $condition) {
             $clause = '';
+            $notCond = array();
             $values = array();
 
-            if ($cond && is_array($cond)) {
+            if ($cond && is_array($cond) && count($cond)) {
+                QueryBuilder::clearBindValues();
                 list($clause, $values) = db_condition($cond);
-            } elseif ($condition && is_array($condition)) {
+                $notCond = array(
+                    'not' => $cond
+                );
+            } elseif ($condition && is_array($condition) && count($condition)) {
+                QueryBuilder::clearBindValues();
                 list($clause, $values) = db_condition($condition);
-            } elseif ($condition && is_string($condition)) {
-                list($clause, $values) = $condition;
+                $notCond = array(
+                    'not' => $condition
+                );
             }
 
             if (empty($clause)) {
                 return false;
             }
-
-            $notCond = 'NOT ( ' . $clause . ' )';
 
             if (db_tableHasSlug($table, $useSlug)) {
                 $slug = _slug($slug, $table, $notCond);
@@ -755,10 +757,10 @@ if (!function_exists('db_update')) {
             $sql = 'UPDATE ' . QueryBuilder::quote($table) . ' SET ';
             foreach ($fields as $key => $value) {
                 $placeholder = ':' . $key;
-                $sql .= sprintf('`%s` = %s,', $key, $placeholder);
+                $sql .= sprintf('`%s` = %s, ', $key, $placeholder);
                 $values[$placeholder] = $value;
             }
-            $sql = rtrim($sql, ',');
+            $sql = rtrim($sql, ', ');
             $sql .= ' WHERE ' . $clause;
 
             return db_query($sql, $values);
@@ -794,6 +796,8 @@ if (!function_exists('db_delete')) {
      */
     function db_delete($table, $condition = null)
     {
+        QueryBuilder::clearBindValues();
+
         $table = db_table($table);
 
         # Invoke the hook db_delete_[table_name] if any
@@ -802,9 +806,12 @@ if (!function_exists('db_delete')) {
             return call_user_func_array($hook, array($table, $condition));
         }
 
+        $values = array();
+
         if (is_array($condition)) {
-            $condition = db_condition($condition);
+            list($condition, $values) = db_condition($condition);
         }
+
         if ($condition) {
             $condition = ' WHERE '.$condition;
         }
@@ -815,25 +822,29 @@ if (!function_exists('db_delete')) {
         }
 
         ob_start(); # to capture error return
-        db_query($sql);
+        db_query($sql, $values);
         $return = ob_get_clean();
         if ($return) {
             # If there is FK delete RESTRICT constraint
             if (db_errorNo() == 1451) {
                 if (db_tableHasTimestamps($table)) {
                     $sql = 'UPDATE '. QueryBuilder::quote($table) . '
-                            SET `deleted` = "'.date('Y-m-d H:i:s').'" '.$condition.'
+                            SET `deleted` = :deleted ' . $condition . '
                             LIMIT 1';
-                    return db_query($sql);
-                } else {
-                    return false;
+                    $values[':deleted'] = date('Y-m-d H:i:s');
+
+                    return db_query($sql, $values);
                 }
+
+                return false;
             } else {
                 echo $return;
+
                 return false;
             }
         }
-        return (db_errorNo() == 0) ? true : false;
+
+        return db_errorNo() == 0;
     }
 }
 
@@ -862,6 +873,8 @@ if (!function_exists('db_delete_multi')) {
      */
     function db_delete_multi($table, $condition = null)
     {
+        QueryBuilder::clearBindValues();
+
         $table = db_table($table);
 
         # Invoke the hook db_delete_[table_name] if any
@@ -870,11 +883,13 @@ if (!function_exists('db_delete_multi')) {
             return call_user_func_array($hook, array($table, $condition));
         }
 
+        $values = array();
         if (is_array($condition)) {
-            $condition = db_condition($condition);
+            list($condition, $values) = db_condition($condition);
         }
+
         if ($condition) {
-            $condition = ' WHERE '.$condition;
+            $condition = ' WHERE '. $condition;
         }
 
         $sql = 'DELETE FROM ' . QueryBuilder::quote($table) . $condition;
@@ -883,7 +898,7 @@ if (!function_exists('db_delete_multi')) {
         }
 
         ob_start(); # to capture error return
-        db_query($sql);
+        db_query($sql, $values);
         $return = ob_get_clean();
 
         if ($return && db_errorNo() > 0) {

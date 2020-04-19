@@ -1495,14 +1495,13 @@ if (!function_exists('_slug')) {
     /**
      * Generate a slug of human-readable keywords
      *
-     * @param string        $string     Text to slug
-     * @param string        $table      Table name to check in. If it is empty, no check in the table
-     * @param string|array  $condition  Condition to append table check-in, e.g,
-     *   `fieldName != value` or `array('fieldName !=' => value)`
+     * @param string $string     Text to slug
+     * @param string $table      Table name to check in. If it is empty, no check in the table
+     * @param array  $condition  Condition to append table check-in, e.g, `array('fieldName !=' => value)`
      *
      * @return string The generated slug
      */
-    function _slug($string, $table = '', $condition = null)
+    function _slug($string, $table = '', array $condition = array())
     {
         $specChars = array(
             '`','~','!','@','#','$','%','\^','&',
@@ -1516,32 +1515,33 @@ if (!function_exists('_slug')) {
         $slug   = preg_replace('/(&amp;|&quot;|&#039;|&lt;|&gt;)/i', '', $slug);
         $slug   = str_replace($specChars, '-', $slug);
         $slug   = str_replace(array(' ', '.'), '-', $slug);
+        $slug   = trim($slug, '-');
 
-        if (is_array($condition)) {
-            $condition = db_condition($condition);
+        $condition = array_merge(
+            array('slug' => $slug),
+            $condition
+        );
+
+        while (true && $table) {
+            $count = db_count($table)->where($condition)->fetch();
+            if ($count == 0) {
+                break;
+            }
+
+            $segments = explode('-', $slug);
+            if (sizeof($segments) > 1 && is_numeric($segments[sizeof($segments)-1])) {
+                $index = array_pop($segments);
+                $index++;
+            } else {
+                $index = 1;
+            }
+
+            $segments[] = $index;
+            $slug = implode('-', $segments);
         }
 
-        while (1 && $table) {
-            $sql = 'SELECT slug FROM '.$table.' WHERE slug = ":alias"';
-            if ($condition) {
-                $sql .= ' AND '.$condition;
-            }
-            if ($result = db_query($sql, array(':alias' => $slug))) {
-                if (db_numRows($result) == 0) {
-                    break;
-                }
-                $segments = explode('-', $slug);
-                if (sizeof($segments) > 1 && is_numeric($segments[sizeof($segments)-1])) {
-                    $index = array_pop($segments);
-                    $index++;
-                } else {
-                    $index = 1;
-                }
-                $segments[] = $index;
-                $slug = implode('-', $segments);
-            }
-        }
         $slug = preg_replace('/[\-]+/', '-', $slug);
+
         return trim($slug, '-');
     }
 }

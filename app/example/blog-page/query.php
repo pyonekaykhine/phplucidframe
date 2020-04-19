@@ -17,7 +17,7 @@ $blog->slug  = 'custom-routing-to-a-page-including-a-form-example';
  //// OR
  //// You can also use `db_fetchResult()` with SQL which returns the std object
 
- $sql = 'SELECT *, postTitle title FROM ' . db_prefix() . 'post WHERE postId = :id';
+ $sql = 'SELECT *, postTitle title FROM ' . db_table('post') . ' WHERE postId = :id';
  $blog = db_fetchResult($sql, array(':id' => $id));
 */
 
@@ -26,7 +26,7 @@ $blog->slug  = 'custom-routing-to-a-page-including-a-form-example';
 //$count = db_count($sql);
 //echo $count . '<br>';
 //
-//$count = db_count('post');
+//$count = db_count('post')->fetch();
 //echo $count . '<br>';
 //
 //// Retrieving a field
@@ -39,6 +39,9 @@ $blog->slug  = 'custom-routing-to-a-page-including-a-form-example';
 //
 //echo db_numRows($result);
 //
+//$sql = 'SELECT slug, postTitle FROM '. db_table('post') . ' WHERE postId = 3';
+//$post = db_fetchResult($sql);
+//_dpr($post);
 //exit;
 
 if ($blog) {

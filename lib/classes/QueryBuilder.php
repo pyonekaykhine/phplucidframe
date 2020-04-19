@@ -49,9 +49,12 @@ class QueryBuilder
     private $result;
     /** @var string AND/OR */
     private $whereType = 'AND';
+    /** @var array The values to sql to bind */
+    protected static $bindValues = array();
     /** @var array Collection of SQL operators allowed */
     private static $operators = array(
         '=', '>=', '<=', '>', '<', '!=', '<>',
+        'not',
         'between', 'nbetween',
         'like', 'like%%', 'like%~', 'like~%',
         'nlike', 'nlike%%', 'nlike%~', 'nlike~%'
@@ -101,6 +104,8 @@ class QueryBuilder
      */
     public function __construct($table = null, $alias = null)
     {
+        self::clearBindValues();
+
         $this->from($table, $alias);
     }
 
@@ -453,11 +458,9 @@ class QueryBuilder
      *
      * @return object QueryBuilder
      */
-    public function having(array $condition = array())
+    public function having(array $condition)
     {
-        $this->andHaving($condition);
-
-        return $this;
+        return $this->andHaving($condition);
     }
 
     /**
@@ -466,11 +469,9 @@ class QueryBuilder
      * @return object QueryBuilder
      * @see having()
      */
-    public function andHaving(array $condition = array())
+    public function andHaving(array $condition)
     {
-        $this->having = self::buildCondition($condition, 'AND');
-
-        return $this;
+        return $this->addHaving($condition, 'AND');
     }
 
     /**
@@ -481,7 +482,22 @@ class QueryBuilder
      */
     public function orHaving(array $condition = array())
     {
-        $this->having = self::buildCondition($condition, 'OR');
+        return $this->addHaving($condition, 'OR');
+    }
+
+    /**
+     * @internal
+     * Create AND/OR HAVING ... condition
+     * @param array $condition  The array of conditions
+     * @param string $type AND|OR
+     * @return object QueryBuilder
+     */
+    private function addHaving(array $condition, $type)
+    {
+        list($clause, $values) = self::buildCondition($condition, $type);
+
+        $this->having = $clause;
+        self::addBindValues($values);
 
         return $this;
     }
@@ -669,9 +685,17 @@ class QueryBuilder
         if ($this->where) {
             if (is_array($this->where)) {
                 if (array_key_exists('AND', $this->where)) {
-                    $sql .= ' WHERE ' . self::buildCondition($this->where['AND'], 'AND');
+                    list($clause, $values) = self::buildCondition($this->where['AND'], 'AND');
+                    $sql .= ' WHERE ' . $clause;
+                    self::addBindValues($values);
                 } elseif (array_key_exists('OR', $this->where)) {
-                    $sql .= ' WHERE ' . self::buildCondition($this->where['OR'], 'OR');
+                    list($clause, $values) = self::buildCondition($this->where['OR'], 'OR');
+                    $sql .= ' WHERE ' . $clause;
+                    self::addBindValues($values);
+                } elseif (array_key_exists('NOT', $this->where)) {
+                    list($clause, $values) = self::buildCondition($this->where['NOT'], 'NOT');
+                    $sql .= ' WHERE ' . $clause;
+                    self::addBindValues($values);
                 }
             } else {
                 $sql .= ' WHERE ' . $this->where;
@@ -716,14 +740,17 @@ class QueryBuilder
     /**
      * Execute the query
      *
-     * @return object The result object
+     * @return bool|resource The result
      */
     public function execute()
     {
         $this->buildSQL();
+
         if ($this->sql) {
-            $this->result = db_query($this->sql);
+            $this->result = db_query($this->sql, self::$bindValues);
         }
+
+        self::clearBindValues();
 
         return $this->result;
     }
@@ -856,6 +883,20 @@ class QueryBuilder
     }
 
     /**
+     * Get the built SQL with the values replaced
+     * @return string
+     */
+    public function getReadySQL() {
+        $sql = $this->getSQL();
+
+        foreach (QueryBuilder::getBindValues() as $key => $value) {
+            $sql = preg_replace('/' . $key . '\b/', $value, $sql);
+        }
+
+        return $sql;
+    }
+
+    /**
      * Validate table name or field name
      *
      * @param string $name The table name or field name to be validated
@@ -926,15 +967,19 @@ class QueryBuilder
 
         $type = strtoupper($type);
         $condition = array();
-        $values = array();
 
         foreach ($cond as $field => $value) {
             $field = trim($field);
 
-            if (in_array(strtoupper($field), array('AND', 'OR'))) {
-                list($nestedClause, $nestedValues) = self::buildCondition($value, $field);
-                $condition[] = '(' . $nestedClause . ')';
-                $values = array_merge($values, $nestedValues);
+            if (in_array(strtoupper($field), array('AND', 'OR', 'NOT'))) {
+                if (strtoupper($field) == 'NOT') {
+                    list($nestedClause, $values) = self::buildCondition($value, 'AND');
+                    $condition[] = 'NOT (' . $nestedClause . ')';
+                } else {
+                    list($nestedClause, $values) = self::buildCondition($value, $field);
+                    $condition[] = '(' . $nestedClause . ')';
+                }
+                self::addBindValues($values);
                 continue;
             }
 
@@ -955,7 +1000,9 @@ class QueryBuilder
             if (is_numeric($field)) {
                 # if the field is array index,
                 # assuming that is a condition built by db_or() or db_and();
-                $condition[] = '( ' . $value . ' )';
+                list($nestedClause, $values) = $value;
+                $condition[] = '( ' . $nestedClause . ' )';
+                self::addBindValues($values);
             } else {
                 # if the operator is "between", the value must be array
                 # otherwise force to "="
@@ -965,12 +1012,12 @@ class QueryBuilder
 
                 $opr = strtolower($opr);
                 $key = $field;
-                $placeholder = self::getPlaceholder($key, $values);
+                $placeholder = self::getPlaceholder($key, self::$bindValues);
                 $field = self::quote($field);
 
                 if (array_key_exists($opr, self::$likes)) {
                     $condition[] = $field . ' ' . str_replace(':placeholder', $placeholder, self::$likes[$opr]);
-                    $values[$placeholder] = $value;
+                    self::setBindValue($placeholder, $value);
                     continue;
                 }
 
@@ -993,14 +1040,14 @@ class QueryBuilder
                             $key
                         );
 
-                        $values[$placeholder . '_from'] = current($value);
-                        $values[$placeholder . '_to'] = end($value);
+                        self::setBindValue($placeholder . '_from', $value[0]);
+                        self::setBindValue($placeholder . '_to', $value[1]);
                     } else {
                         $inPlaceholders = array();
                         foreach ($value as $i => $val) {
                             $placeholder = ':' . $key . $i;
                             $inPlaceholders[] = $placeholder;
-                            $values[$placeholder] = $val;
+                            self::setBindValue($placeholder, $val);
                         }
 
                         $condition[] = sprintf(
@@ -1014,21 +1061,22 @@ class QueryBuilder
                 }
 
                 $condition[] = "{$field} {$opr} {$placeholder}";
-                $values[$placeholder] = $value;
+                self::setBindValue($placeholder, $value);
             }
         }
 
         if (count($condition)) {
             return array(
                 implode(" {$type} ", $condition),
-                $values,
+                self::$bindValues,
             );
         }
 
         return array('', array());
     }
 
-    private static function getPlaceholder($key, $values = array()) {
+    private static function getPlaceholder($key, $values = array())
+    {
         $placeholders = array_filter($values, function ($placeholder) use ($key) {
             return stripos($placeholder, $key) === 1;
         }, ARRAY_FILTER_USE_KEY);
@@ -1046,5 +1094,41 @@ class QueryBuilder
         }
 
         return ':' . $key . $index;
+    }
+
+    /**
+     * Bind values for query arguments
+     * @param array $values
+     */
+    private static function addBindValues(array $values)
+    {
+        self::$bindValues = array_merge(self::$bindValues, $values);
+    }
+
+    /**
+     * Bind value for query argument by key
+     * @param string $key
+     * @param mixed $value
+     */
+    private static function setBindValue($key, $value)
+    {
+        self::$bindValues[$key] = $value;
+    }
+
+    /**
+     * Clear bind values
+     */
+    public static function clearBindValues()
+    {
+        self::$bindValues = array();
+    }
+
+    /**
+     * Get bind values
+     * @return array
+     */
+    public static function getBindValues()
+    {
+        return self::$bindValues;
     }
 }

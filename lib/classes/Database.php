@@ -130,7 +130,7 @@ class Database
                 $this->connection = new \PDO($dsn, $this->username, $this->password, $options);
 
                 # Load the schema of the currently connected database
-                $schema = _schema($namespace, true);
+                $schema = _schema($this->namespace, true);
                 $this->schemaManager = new SchemaManager($schema);
                 if (!$this->schemaManager->isLoaded()) {
                     $this->schemaManager->build($namespace);
@@ -327,11 +327,16 @@ class Database
         }
 
         try {
-            $stmt = $this->connection->prepare($sql);
-            $stmt->execute($params);
-
-            self::$queries[] = $sql;
-            self::$bindParams = $params;
+            if (empty($params)) {
+                $stmt = $this->connection->query($sql);
+                self::$queries[] = $sql;
+            } else {
+                $stmt = $this->connection->prepare($sql);
+                // _pr($params);
+                $stmt->execute($params);
+                self::$queries[] = $sql;
+                self::$bindParams = $params;
+            }
 
             if (_g('db_printQuery')) {
                 return $this->getQueryStr();
@@ -519,10 +524,12 @@ class Database
      * @param string|null   $arg3 The field alias if the first argument is table name
      *   or the second argument is field name
      *
-     * @return int The result count
+     * @return int|QueryBuilder The result count
      */
     public function getCount($arg1, $arg2 = null, $arg3 = null)
     {
+        QueryBuilder::clearBindValues();
+
         if ($arg1 && QueryBuilder::validateName($arg1)) {
             $table = $arg1;
             $alias = 'count';
@@ -540,7 +547,7 @@ class Database
                 $qb->count('*', 'count');
             }
 
-            return $qb->fetch();
+            return $qb;
         } else {
             $sql = $arg1;
             $args = $arg2;
