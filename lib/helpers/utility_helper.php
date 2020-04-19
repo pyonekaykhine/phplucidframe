@@ -886,7 +886,10 @@ function _self($queryStr = array(), $lang = '')
 function _header($status, $message = null)
 {
     _g('httpStatusCode', $status);
-    header('HTTP/1.1 ' . $status . ($message ? ' ' . $message : ''));
+
+    if (_cfg('env') != ENV_TEST && __env() != ENV_TEST) {
+        header('HTTP/1.1 ' . $status . ($message ? ' ' . $message : ''));
+    }
 }
 /**
  * Header redirect to a specific location
